@@ -34,11 +34,11 @@ async def test_scheduler():
 		"Invent a product name for smart reusable water bottles.",
 		"Plan a two-hour study session for calculus practice. Plan a two-hour study session for calculus practice.",
 		"Write a short dialogue between a robot and gardener. robot and gardener.",
-		"Create a travel checklist for ",
+		"Create a travel checklist for",
 	]
-	sampling_params = SamplingParams(temperature=0.7, max_tokens=3)
+	sampling_params = SamplingParams(temperature=0.7, max_tokens=1)
 	
-	# Store our custom timing metrics
+	# Store custom timing metrics
 	tracker = []
 
 	async def run_prompt(prompt_id, prompt_text):
@@ -62,17 +62,17 @@ async def test_scheduler():
 			"finished": finish_time
 		})
 
-	print("Submitting prompts to Async Engine...")
+	print("Run prompts...")
 	tasks = [run_prompt(i, p) for i, p in enumerate(prompts)]
 	await asyncio.gather(*tasks)
 	
-	# 3. Sort and print by the exact time the scheduler started them
 	print("\n===== Actual Scheduler Execution Order =====")
 	sorted_tracker = sorted(tracker, key=lambda x: x["started"])
 	
 	for i, t in enumerate(sorted_tracker):
 		duration = t["finished"] - t["started"]
-		print(f"Order: {i+1} | Original ID: {t['id']} | Tokens Length: {t['length']:<3} | Duration: {duration:.4f}s")
+		# print(f"Order: {i+1} | Original ID: {t['id']} | Tokens Length: {t['length']:<3} | Duration: {duration:.4f}s")
+		print(f"Order: {i+1} | Original ID: {t['id']} | Tokens Length: {t['length']:<3}")
 
 def main():
 	asyncio.run(test_scheduler())
