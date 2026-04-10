@@ -77,6 +77,6 @@ FINISHED_REPETITION = enum.auto()
 - `LLM` class used for offline inference, unsuitable for testing the scheduler (?) 
 - Do we need to patch the `schedule()` method for this case? Because we could just use existing priority queue implementation, but change the priority metric based on its length. (`main.py`)
     - Implementation in `main.py`
-- Patched version in `main_patch.py`
+- Patched version in `main_patch.py` -> Still buggy for some reason, the order is not changing
 
 
