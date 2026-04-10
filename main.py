@@ -36,22 +36,18 @@ async def test_scheduler():
         "Create a travel checklist for",
     ]
     
-	# Duplicate prompts to increase queue length and better test LPF ordering
-    prompts = prompts * 2
-    
     tracker = []
 
     async def run_prompt(prompt_id, prompt_text, is_blocker=False):
         token_length = len(tokenizer.encode(prompt_text, add_special_tokens=False))
         engine_input = engine.renderer.render_cmpl([{"prompt": prompt_text}])[0]
         
-        # # LPF Logic: Lower number = higher priority in Python's heapq. 
-        # req_priority = 0 if is_blocker else -token_length
-        req_priority = -token_length
+        # LPF Logic: Lower number = higher priority in Python's heapq. 
+        req_priority = 0 if is_blocker else -token_length
+        # req_priority = -token_length
         
-        # # The blocker needs enough tokens to hold up the line. The rest just need 1.
-        # s_params = SamplingParams(temperature=0.7, max_tokens=20 if is_blocker else 1)
-        s_params = SamplingParams(temperature=0.7, max_tokens=20)
+        s_params = SamplingParams(temperature=0.7, max_tokens=20 if is_blocker else 1)
+        # s_params = SamplingParams(temperature=0.7, max_tokens=20)
         
         # Pass the priority to the engine
         results_generator = engine.generate(
@@ -77,12 +73,11 @@ async def test_scheduler():
                 "finished": finish_time
             })
 
-    # blocker_task = asyncio.create_task(
-    #     run_prompt("BLOCKER", "Write", is_blocker=True)
-    # )
+    blocker_task = asyncio.create_task(
+        run_prompt("BLOCKER", "Write", is_blocker=True)
+    )
     
-    # # Wait 1 second to ensure the blocker has successfully started running in the engine
-    # await asyncio.sleep(1)
+    await asyncio.sleep(1)
     
     print("Submitting LPF prompts to the waiting queue...")
     tasks = [run_prompt(i, p) for i, p in enumerate(prompts)]
