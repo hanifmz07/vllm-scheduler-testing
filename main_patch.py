@@ -4,12 +4,43 @@ import asyncio
 import time
 import multiprocessing as mp
 from vllm import AsyncLLMEngine, AsyncEngineArgs, SamplingParams
-
+from vllm.v1.core.sched.scheduler import Scheduler
+from vllm.v1.core.sched.request_queue import SchedulingPolicy, create_request_queue
 load_dotenv()
 
 CACHE_DIR = os.getenv("CACHE_DIR")
 os.environ["VLLM_CPU_KVCACHE_SPACE"] = "2"
-os.environ["VLLM_ENABLE_V1_MULTIPROCESSING"] = "1"
+os.environ["VLLM_ENABLE_V1_MULTIPROCESSING"] = "0"
+
+def _apply_lpf_patch() -> None:
+    """Apply LPF patch to the Scheduler."""
+    if getattr(Scheduler, "_lpf_patch_applied", False):
+        return
+
+    orig_init = Scheduler.__init__
+    orig_add_request = Scheduler.add_request
+
+    def _lpf_prompt_len(req):
+        n = getattr(req, "num_prompt_tokens", None)
+        if n is None:
+            pt = getattr(req, "prompt_token_ids", None) or []
+            n = len(pt)
+        return int(n)
+
+    def patched_init(self, *args, **kwargs):
+        orig_init(self, *args, **kwargs)
+        self.policy = SchedulingPolicy.PRIORITY
+        self.waiting = create_request_queue(self.policy)
+        self.skipped_waiting = create_request_queue(self.policy)
+
+    def patched_add_request(self, request):
+        # The monkey patch applies the priority here!
+        request.priority = -_lpf_prompt_len(request)
+        return orig_add_request(self, request)
+
+    Scheduler.__init__ = patched_init
+    Scheduler.add_request = patched_add_request
+    Scheduler._lpf_patch_applied = True
 
 async def test_scheduler():
     engine_args = AsyncEngineArgs(
@@ -17,8 +48,8 @@ async def test_scheduler():
         download_dir=CACHE_DIR,
         max_model_len=1024,
         enforce_eager=True,
-        max_num_seqs=1, # Force 1-by-1 processing to test queue order
-        scheduling_policy="priority", # Enable native priority queue
+        max_num_seqs=20,
+        # scheduling_policy="priority", # Enable native priority queue 
     )
     engine = AsyncLLMEngine.from_engine_args(engine_args)
     tokenizer = engine.get_tokenizer()
@@ -36,30 +67,15 @@ async def test_scheduler():
         "Create a travel checklist for",
     ]
     
-	# Duplicate prompts to increase queue length and better test LPF ordering
-    prompts = prompts * 2
-    
     tracker = []
 
     async def run_prompt(prompt_id, prompt_text, is_blocker=False):
         token_length = len(tokenizer.encode(prompt_text, add_special_tokens=False))
         engine_input = engine.renderer.render_cmpl([{"prompt": prompt_text}])[0]
         
-        # # LPF Logic: Lower number = higher priority in Python's heapq. 
-        # req_priority = 0 if is_blocker else -token_length
-        req_priority = -token_length
+        s_params = SamplingParams(temperature=0.7, max_tokens=20 if is_blocker else 1)
         
-        # # The blocker needs enough tokens to hold up the line. The rest just need 1.
-        # s_params = SamplingParams(temperature=0.7, max_tokens=20 if is_blocker else 1)
-        s_params = SamplingParams(temperature=0.7, max_tokens=20)
-        
-        # Pass the priority to the engine
-        results_generator = engine.generate(
-            engine_input, 
-            s_params, 
-            request_id=str(prompt_id),
-            priority=req_priority 
-        )
+        results_generator = engine.generate(engine_input, s_params, request_id=str(prompt_id))
         
         first_token_time = None
         
@@ -77,18 +93,13 @@ async def test_scheduler():
                 "finished": finish_time
             })
 
-    # blocker_task = asyncio.create_task(
-    #     run_prompt("BLOCKER", "Write", is_blocker=True)
-    # )
-    
-    # # Wait 1 second to ensure the blocker has successfully started running in the engine
-    # await asyncio.sleep(1)
-    
-    print("Submitting LPF prompts to the waiting queue...")
+
+    # Create the task list with the test prompts
     tasks = [run_prompt(i, p) for i, p in enumerate(prompts)]
     
+    print("Submitting ALL prompts simultaneously so the queue builds up...")
+    
     await asyncio.gather(*tasks)
-    # await blocker_task
     
     print("\n===== Actual Scheduler Execution Order =====")
     sorted_tracker = sorted(tracker, key=lambda x: x["started"])
@@ -97,6 +108,7 @@ async def test_scheduler():
         print(f"Order: {i+1:<2} | Original ID: {t['id']:<2} | Tokens Length: {t['length']:<3}")
 
 def main():
+    _apply_lpf_patch()
     asyncio.run(test_scheduler())
 
 if __name__ == "__main__":

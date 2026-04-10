@@ -47,20 +47,36 @@ Scheduler: `spt_scheduler.LongestPromptFirstScheduler`
 | 10 | 9 | 5 |
 
 
-#### Shortest Prompt First
-Scheduler: `spt_scheduler.ShortestPromptFirstScheduler`
-
-| Rank | Original ID | Tokens Length |
-|---|---:|---:|
-| 1 | 0 | 8 |
-| 2 | 2 | 5 |
-| 3 | 9 | 5 |
-| 4 | 6 | 11 |
-| 5 | 5 | 14 |
-| 6 | 1 | 15 |
-| 7 | 8 | 16 |
-| 8 | 7 | 20 |
-| 9 | 3 | 29 |
-| 10 | 4 | 36 |
+### Notes
+- Scheduler states
+```py
+WAITING = enum.auto()
+WAITING_FOR_STRUCTURED_OUTPUT_GRAMMAR = enum.auto()
+WAITING_FOR_REMOTE_KVS = enum.auto()
+WAITING_FOR_STREAMING_REQ = enum.auto()
+RUNNING = enum.auto()
+PREEMPTED = enum.auto()
+# Note: anything after PREEMPTED will be considered
+# as a finished status.
+FINISHED_STOPPED = enum.auto()
+FINISHED_LENGTH_CAPPED = enum.auto()
+FINISHED_ABORTED = enum.auto()
+FINISHED_IGNORED = enum.auto()
+FINISHED_ERROR = enum.auto()
+FINISHED_REPETITION = enum.auto()
+```
+- How does vLLM scheduler works (oversimplified)
+    1. New inserted requests becomes WAITING
+    2. Loops RUNNING requests first (preempts if allocation fails)
+    3. Promotes WAITING requests to RUNNING
+    4. Speculative decode branch during schedule
+    5. Built the output object
+    6. Stop condition and finish
+    7. Next iteration
+- `vllm serve` is the cli version of running `AsyncLLM`(or `AsyncLLMEngine`, both are alias to each other). So I decided to keep using `AsyncLLMEngine` instead of `vllm serve` for easier testing.
+- `LLM` class used for offline inference, unsuitable for testing the scheduler (?) 
+- Do we need to patch the `schedule()` method for this case? Because we could just use existing priority queue implementation, but change the priority metric based on its length. (`main.py`)
+    - Implementation in `main.py`
+- Patched version in `main_patch.py`
 
 
