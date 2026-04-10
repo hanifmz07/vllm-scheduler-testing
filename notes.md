@@ -1,0 +1,2 @@
+- It seems that PREEMPTED and WAITING can be in different queue but the comparison is still for all unfinished non-RUNNING requests
+- Priority is set 0 by default, and basically unchanged during runtime in the vanilla implementation

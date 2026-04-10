@@ -4,21 +4,21 @@ import asyncio
 import time
 import multiprocessing as mp
 from vllm import AsyncLLMEngine, AsyncEngineArgs, SamplingParams
-from vllm.v1.core.sched.scheduler import Scheduler
+from vllm.v1.core.sched.async_scheduler import AsyncScheduler
 from vllm.v1.core.sched.request_queue import SchedulingPolicy, create_request_queue
 load_dotenv()
 
 CACHE_DIR = os.getenv("CACHE_DIR")
 os.environ["VLLM_CPU_KVCACHE_SPACE"] = "2"
-os.environ["VLLM_ENABLE_V1_MULTIPROCESSING"] = "0"
+os.environ["VLLM_ENABLE_V1_MULTIPROCESSING"] = "1"
 
 def _apply_lpf_patch() -> None:
-    """Apply LPF patch to the Scheduler."""
-    if getattr(Scheduler, "_lpf_patch_applied", False):
+    """Apply LPF patch to the AsyncScheduler."""
+    if getattr(AsyncScheduler, "_lpf_patch_applied", False):
         return
 
-    orig_init = Scheduler.__init__
-    orig_add_request = Scheduler.add_request
+    orig_init = AsyncScheduler.__init__
+    orig_add_request = AsyncScheduler.add_request
 
     def _lpf_prompt_len(req):
         n = getattr(req, "num_prompt_tokens", None)
@@ -33,14 +33,16 @@ def _apply_lpf_patch() -> None:
         self.waiting = create_request_queue(self.policy)
         self.skipped_waiting = create_request_queue(self.policy)
 
+        print("LPF Patch Applied: Scheduler now uses PRIORITY queue and add_request is patched to set priority based on prompt length.")
+
     def patched_add_request(self, request):
         # The monkey patch applies the priority here!
         request.priority = -_lpf_prompt_len(request)
         return orig_add_request(self, request)
 
-    Scheduler.__init__ = patched_init
-    Scheduler.add_request = patched_add_request
-    Scheduler._lpf_patch_applied = True
+    AsyncScheduler.__init__ = patched_init
+    AsyncScheduler.add_request = patched_add_request
+    AsyncScheduler._lpf_patch_applied = True
 
 async def test_scheduler():
     engine_args = AsyncEngineArgs(

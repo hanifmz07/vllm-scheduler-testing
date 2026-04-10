@@ -18,6 +18,7 @@ async def test_scheduler():
         enforce_eager=True,
         max_num_seqs=1, # Force 1-by-1 processing to test queue order
         scheduling_policy="priority", # Enable native priority queue
+        scheduler_cls='custom_scheduler.LongestPromptFirstScheduler'
     )
     engine = AsyncLLMEngine.from_engine_args(engine_args)
     tokenizer = engine.get_tokenizer()
@@ -41,10 +42,6 @@ async def test_scheduler():
         token_length = len(tokenizer.encode(prompt_text, add_special_tokens=False))
         engine_input = engine.renderer.render_cmpl([{"prompt": prompt_text}])[0]
         
-        # LPF Logic: Lower number = higher priority in Python's heapq. 
-        req_priority = 0 if is_blocker else -token_length
-        # req_priority = -token_length
-        
         s_params = SamplingParams(temperature=0.7, max_tokens=20 if is_blocker else 1)
         # s_params = SamplingParams(temperature=0.7, max_tokens=20)
         
@@ -53,7 +50,7 @@ async def test_scheduler():
             engine_input, 
             s_params, 
             request_id=str(prompt_id),
-            priority=req_priority 
+            # priority=req_priority 
         )
         
         first_token_time = None
@@ -72,11 +69,11 @@ async def test_scheduler():
                 "finished": finish_time
             })
 
-    blocker_task = asyncio.create_task(
-        run_prompt("BLOCKER", "Write", is_blocker=True)
-    )
+    # blocker_task = asyncio.create_task(
+    #     run_prompt("BLOCKER", "Write", is_blocker=True)
+    # )
     
-    await asyncio.sleep(1)
+    # await asyncio.sleep(1)
     
     print("Submitting LPF prompts to the waiting queue...")
     tasks = [run_prompt(i, p) for i, p in enumerate(prompts)]
