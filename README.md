@@ -150,6 +150,6 @@ Columns:
 ## Related notes
 
 - Experiment writeups: [experiment_notes](experiment_notes)
-- Extra scheduler behavior notes: [notes.md](notes.md)
+- Extra scheduler behavior notes: [notes.md](experiment_notes/notes.md)
 - WARNING: Current results maybe not reliable, because it is ran in a shared machine with user(s) running multiple processes at the same time.
 
